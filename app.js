@@ -619,13 +619,27 @@ function setupTextures() {
   loadImageForTexture("wicker_256.jpg", pwgl.boxTexture);
 }
 
-// 빛에 관한 정보를 버텍스 셰이더의 각 유니폼 변수로 업로드해주는 함수
+// 빛에 관한 정보를 프래그먼트 셰이더의 각 유니폼 변수로 업로드해주는 함수
 function setupLights() {
-  // gl.uniform3fv(WebGLUniformLocation, 빛 정보 배열)로 버텍스 셰이더에 각각의 유니폼 변수에 두 번째 인자를 업로드해줌.
+  // gl.uniform3fv(WebGLUniformLocation, 빛 정보 배열)로 프래그먼트 셰이더에 각각의 유니폼 변수에 두 번째 인자를 업로드해줌.
   gl.uniform3fv(pwgl.uniformLightPositionLoc, [0.0, 20.0, 0.0]); // 빛(광원)의 위치 데이터
   gl.uniform3fv(pwgl.uniformAmbientLightColorLoc, [0.2, 0.2, 0.2]); // 앰비언트 광원 성분 * 앰비언트 재질 특성을 사전에 곱한 값
   gl.uniform3fv(pwgl.uniformDiffuseLightColorLoc, [0.7, 0.7, 0.7]); // 디퓨즈 광원 성분 * 디퓨즈 재질 특성을 사전에 곱한 값
   gl.uniform3fv(pwgl.uniformSpecularLightColorLoc, [0.8, 0.8, 0.8]); // 스펙큘러 광원 성분 * 스펙큘러 재질 특성을 사전에 곱한 값
+
+  /**
+   * 주의!
+   *
+   * 이 예제에서는 '퐁 셰이딩'을 사용하고 있으므로,
+   * 조명 계산이 프래그먼트 셰이더에서 처리되고 있음.
+   *
+   * 따라서 조명 계산에 필요한 변수들이
+   * (uLightPosition, uAmbientLightColor, ... 등)
+   * 프래그먼트 셰이더에 위치하고 있는 상태이므로,
+   *
+   * setupLights 함수에서는 각각의 데이터들을
+   * 프래그먼트 셰이더 내의 유니폼 변수들로 쏴주는 것이 되겠지!
+   */
 }
 
 function uploadModelViewMatrixToShader() {

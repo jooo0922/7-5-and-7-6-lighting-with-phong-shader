@@ -12,11 +12,203 @@
     <script src="./webgl-debug.js" defer></script>
     <script src="./webgl-utils.js" defer></script>
 
-    <script id="shader-vs" type="x-shader/x-vertex"></script>
-    <script id="shader-fs" type="x-shader/x-fragment"></script>
+    <script id="shader-vs" type="x-shader/x-vertex">
+      attribute vec3 aVertexPosition;
+      attribute vec3 aVertexNormal;
+      attribute vec2 aTextureCoordinates;
+
+      uniform mat4 uMVMatrix;
+      uniform mat4 uPMatrix;
+      uniform mat3 uNMatrix;
+
+      varying vec2 vTextureCoordinates;
+      varying vec3 vNormalEye;
+      varying vec3 vPositionEye3;
+
+      void main() {
+        vec4 vertexPositionEye4 = uMVMatrix * vec4(aVertexPosition, 1.0);
+        vPositionEye3 = vertexPositionEye4.xyz / vertexPositionEye4.w;
+
+        vNormalEye = normalize(uNMatrix * aVertexNormal);
+
+        gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+        vTextureCoordinates = aTextureCoordinates;
+      }
+    </script>
+    <script id="shader-fs" type="x-shader/x-fragment">
+      precision mediump float;
+
+      varying vec2 vTextureCoordinates;
+      varying vec3 vNormalEye;
+      varying vec3 vPositionEye3;
+
+      uniform vec3 uLightPosition;
+      uniform vec3 uAmbientLightColor;
+      uniform vec3 uDiffuseLightColor;
+      uniform vec3 uSpecularLightColor;
+
+      uniform sampler2D uSampler;
+
+      const float shininess = 32.0;
+
+      void main() {
+        vec3 vectorToLightSource = normalize(uLightPosition - vPositionEye3);
+
+        float diffuseLightWeighting = max(dot(vNormalEye, vectorToLightSource), 0.0);
+
+        vec3 reflectionVector = normalize(reflect(-vectorToLightSource, vNormalEye));
+
+        vec3 viewVectorEye = -normalize(vPositionEye3);
+
+        float rdotv = max(dot(reflectionVector, viewVectorEye), 0.0);
+
+        float specularLightWeighting = pow(rdotv, shininess);
+
+        vec3 lightWeighting = uAmbientLightColor +
+                              uDiffuseLightColor * diffuseLightWeighting +
+                              uSpecularLightColor * specularLightWeighting;
+
+        vec4 texelColor = texture2D(uSampler, vTextureCoordinates);
+
+        gl_FragColor = vec4(lightWeighting.rgb * texelColor.rgb, texelColor.a);
+      }
+    </script>
   </head>
   <body onload="startup();">
     <canvas id="myGLCanvas" width="500" height="500"></canvas>
     <div id="fps-counter">FPS: <span id="fps">--</span></div>
   </body>
 </html>
+
+<!-- 
+  7-3 예제 버텍스 셰이더와 차이점
+
+
+  7-3 and 7-4 예제에서는 '고라우 셰이딩(= 버텍스당 셰이딩, per-vertex shading)'
+  기법을 사용해서 조명값을 계산해줬음.
+  
+  즉, 각각의 버텍스들에 대해서만 밝기값을 계산해주는 방식을 사용했기 때문에,
+  버텍스 셰이더 내에서 각각의 버텍스들에 대해 조명값을 계산해준 뒤,
+  vLightWeighting 이라는 varying 변수에 할당해줌으로써 
+  프래그먼트 셰이더로 넘겨주는 작업까지 해줬음.
+  
+  즉, 조명 계산 과정이 버텍스 셰이더에서 이루어졌다는 것!
+
+
+  반면, 7-5 and 7-6 예제에서는 '퐁 셰이딩(= 프래그먼트당 셰이딩, per-fragment shading)'
+  기법을 사용해서 조명값을 계산해주고 있음.
+
+  즉, 버텍스들에 대해서만 조명값을 계산해준 뒤, 
+  프래그먼트 셰이더에서 그 조명값을 보간하는 방식이 아니라,
+
+  버텍스 셰이더로부터 눈좌표계로 변환된 
+  버텍스 위치, 노말 데이터 및 텍스트 좌표 데이터만 받아온 뒤에,
+  이 값들을 이용해서 프래그먼트 셰이더에서 각각의 프래그먼트들에 대해
+  직접 조명 계산을 일일이 해주는 방식이라는 것!
+  
+  따라서, 조명 계산 과정이 버텍스 셰이더에서 이루어지지 않음!
+  퐁 셰이딩에서의 버텍스 셰이더는 단지
+  버텍스 위치, 노멀, 텍스트 좌표 데이터를 받아온 뒤,
+  위치, 노멀은 눈좌표계로 변환하고 나서
+  varying 변수에 할당해서 프래그먼트 셰이더에 넘겨주는 일 말고는 하는 게 없음!
+-->
+
+<!-- 
+  7-3 예제 프래그먼트 셰이더와 차이점
+
+
+  7-3 and 7-4 예제에서는 '고라우 셰이딩(= 버텍스당 셰이딩, per-vertex shading)'
+  기법을 사용했기 때문에,
+
+  버텍스 셰이더로부터 각 버텍스마다 계산된 밝기값을 
+  vLightWeighting 라는 varying 변수로 가져온 뒤,
+  '밝기값을 보간'해서 텍셀값과 컴포넌트-와이즈 곱셈을 하여
+  각 프래그먼트의 색상값을 계산해주는 역할밖에 하지 못했음.
+
+  즉, '밝기값을 보간'해서 프래그먼트 색상값을 계산했기 때문에,
+  보간된 밝기값은 정확한 밝기값이라고 할 수 없는거지.
+
+  '보간된 밝기값' = '버텍스의 밝기값을 근거로 대략 추정, 추측한 밝기값'
+
+  따라서, 버텍스 중간 지점에서 스펙큘러 하이라이트가 발생하면,
+  해당 지점의 밝기값을 정확하게 계산하기 어렵다는 단점이 있음. (p.350 참고)
+  또한, 광택이 있는 오브젝트의 경우 아티팩트 효과가 발생한다는 문제도 있음.
+  -> 렌더링 품질이 퐁 셰이딩에 떨어진다는 단점이 있음.
+
+
+  반면, 7-5 and 7-6 예제에서는 '퐁 셰이딩(= 프래그먼트당 셰이딩, per-fragment shading)'
+  기법을 사용하기 때문에,
+
+  버텍스 셰이더로부터 버텍스 텍스처 좌표, 눈좌표계로 변환된 버텍스 노멀, 버텍스 좌표값만 받아온 뒤,
+  (각각 vTextureCoordinates, vNormalEye, vPositionEye3 에 해당)
+  이 '버텍스 데이터들을 선형보간' 해준 뒤에,
+  선형보간된 버텍스 데이터들을 이용해서 각 프래그먼트의 밝기값들을 직접 계산해 줌!
+  
+  즉, '버텍스 데이터(좌표 & 노멀)를 보간'하고, 각 프래그먼트의 '밝기값을 직접 계산' 하기 때문에,
+  고라우 셰이딩보다 각 프래그먼트의 밝기값(조명)을 더 정확하게 계산할 수 있음.
+
+  결과적으로 광택이 있는 물체의 아티팩트가 나타나지 않게 되고,
+  버텍스 중간 지점의 스펙큘러 하이라이트도 제대로 계산이 될것임.
+
+  또한 이전 예제에서 버텍스 셰이더의 밝기값을 계산하는 과정을
+  프래그먼트 셰이더로 그대로 옮겨왔다고 생각하면 됨.
+
+
+  결론적으로 보자면,
+  
+  고라우 셰이딩에서는 '버텍스 밝기값을 보간' 하여 '프래그먼트 밝기값을 추정' 한, 
+  부정확한 밝기값을 사용했다면,
+  
+  퐁 셰이딩에서는 '버텍스 데이터(노말 & 좌표)를 보간' 하여 '프래그먼트 밝기값을 직접 계산'한
+  비교적 정확한 밝기값을 계산하여 사용하기 때문에
+
+  렌더링 결과 및 품질이 가장 좋다고 볼 수 있음.
+-->
+
+<!-- 
+  참고1)
+  버텍스 셰이더에서 반사 벡터(r)을 계산할 때,
+  reflect() 내장함수에서 -vectorToLightSource 로 광원 벡터(l)의 방향을 바꿔줘야 했던 이유
+
+  좀 더 정확하게 설명하자면, 말 그대로 '반사' 벡터를 구하려는 건데,
+  빛이 반사되려면, 광원에서 해당 버텍스 방향으로 도달하는 빛이 반사되는 거잖아?
+
+  그렇다면, 광원에서 버텍스 방향으로 도달하는 빛을 표현하는 벡터는
+  (버텍스 -> 광원) 방향이 아니라, (광원 -> 버텍스) 방향이지!
+
+  따라서, 당연히 (버텍스 -> 광원) 방향으로 맨 처음에 계산해놨던 광원 벡터를
+  -를 붙여서 방향을 뒤집어준 다음에 인자로 전달해줘야 겠지!
+
+
+  참고2)
+  const float shininess = 32.0
+
+  셰이더 내에서의 const는 자바스크립트 내에서의 const와 동일하다.
+  한 마디로, 변수는 변수인데, 값을 바꾸지 않는 상수로 사용할 변수를 선언할 때 사용됨.
+  셰이더 내에서 중간에 광택값을 변경하지 않을 것이기 때문에 const로 선언한 것이겠지!
+
+  또한, float은 
+  지정되는 값이 32.0 이런 식으로 실수값이니까 float으로 지정한 것이고,
+
+  한 마디로, shininess 라는 변수에 대해서 설명하자면,
+  값을 바꾸지 않는 상수로써 사용할 변수이므로 const로 지정하고,
+  해당 변수에는 실수값(32.0)을 넣어줄 것이므로 float이라고 데이터 타입을 지정한 것.
+
+
+  참고3) 
+  vec4 texelColor = texture2D(uSampler, vTextureCoordinates);
+
+  프래그먼트 셰이더에서 텍셀값을 vec4로 받아와야 하는 이유는,
+  app.js 에서 textureFinishedLoading() 함수를 잘 살펴보면,
+  gl.texImage2D() 메서드를 이용해서 현재 바인딩된 WebGLTexture 객체에 대한
+  이미지 데이터를 GPU로 전송하는 방식을 정해주고 있음.
+
+  이 때, 이미지 데이터를 gl.RGBA 형식에 gl.UNSIGNED_BYTE 타입으로 전송하도록 지정하고 있음.
+  이게 무슨 말이냐면, 텍스처를 이루는 각각의 텍셀들에 대해서
+  R, G, B, A 총 4개의 채널로 값을 표현하도록 하고, (gl.RGBA)
+  각 채널의 값을 저장할 때 사용할 메모리를 1바이트로, 즉 텍셀 하나당 4바이트로 사용하도록 한 것. (gl.UNSIGNED_BYTE)
+
+  그렇기 때문에, 프래그먼트 셰이더에서 해당 텍스처로부터
+  텍셀값을 가져오게 된다면, 각 텍셀값은 R, G, B, A 4개의 채널로 구성되어 있으므로,
+  vec4 타입에 저장해서 사용하는 게 맞겠지!
+-->
